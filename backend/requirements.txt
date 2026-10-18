@@ -1,0 +1,4 @@
+fastapi==0.146.0
+uvicorn[standard]==0.54.0
+edge-tts==7.3.1
+tzdata

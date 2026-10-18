@@ -1,0 +1,21 @@
+# Blueprint Render : un service web gratuit (API + site) construit avec le Dockerfile.
+services:
+  - type: web
+    name: audiotraining
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TTS_PROVIDER
+        value: edge
+      - key: MAX_TEXT_CHARS
+        value: "15000"
+      - key: RATE_LIMIT_PER_HOUR
+        value: "20"
+      - key: TTS_CONCURRENCY
+        value: "4"
+      - key: GENERATION_TIMEOUT_SECONDS
+        value: "240"
