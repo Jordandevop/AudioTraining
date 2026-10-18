@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatDuration } from '../estimate'
+import { unlockAudio } from '../unlockAudio'
 
 export type Playing = {
   kind: 'preview' | 'result'
@@ -25,13 +26,36 @@ type Props = {
 // Les deux actions, l'avancement et un lecteur unique (extrait ou dictée complète).
 export function ListenPanel(props: Props) {
   const { playing } = props
+  // Un seul élément <audio>, gardé d'une lecture à l'autre : sur iPhone,
+  // un lecteur recréé ne pourrait pas démarrer tout seul.
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [duration, setDuration] = useState({ key: -1, seconds: 0 })
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (!playing) {
+      audio.pause()
+      return
+    }
+    audio.src = playing.url
+    audio.play().catch(() => {}) // lecture bloquée : le bouton lecture reste disponible
+  }, [playing])
+
+  function withUnlock(action: () => void) {
+    return () => {
+      unlockAudio(audioRef.current)
+      action()
+    }
+  }
+
   return (
     <section className="card listen" aria-label="Écoute et génération">
       <div className="actions">
         <button
           type="button"
           className="button button-secondary"
-          onClick={props.onPreview}
+          onClick={withUnlock(props.onPreview)}
           disabled={!props.canPreview}
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
@@ -45,7 +69,7 @@ export function ListenPanel(props: Props) {
         <button
           type="button"
           className="button button-primary"
-          onClick={props.onGenerate}
+          onClick={withUnlock(props.onGenerate)}
           disabled={!props.canGenerate}
         >
           {props.generating ? 'Génération…' : "Générer l'audio"}
@@ -73,57 +97,49 @@ export function ListenPanel(props: Props) {
         </p>
       )}
 
-      {playing ? (
-        <Player key={playing.key} playing={playing} />
-      ) : (
-        <div className="player">
+      <div className={`player${playing ? ' filled' : ''}`}>
+        {playing ? (
+          <div className="player-title">
+            <span>{playing.title}</span>
+            <span>{duration.key === playing.key ? formatDuration(duration.seconds) : ''}</span>
+          </div>
+        ) : (
           <p className="player-empty">
             Écoutez un extrait pour régler la voix, puis générez la dictée complète.
           </p>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function Player({ playing }: { playing: Playing }) {
-  const [duration, setDuration] = useState(0)
-  return (
-    <div className="player filled">
-      <div className="player-title">
-        <span>{playing.title}</span>
-        <span>{duration ? formatDuration(duration) : ''}</span>
-      </div>
-      <div className="player-row">
-        <audio
-          controls
-          autoPlay
-          src={playing.url}
-          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-        >
-          Votre navigateur ne peut pas lire l'audio. Téléchargez le fichier MP3.
-        </audio>
-        {playing.kind === 'result' && (
-          <a
-            className="icon-button"
-            href={playing.url}
-            download={playing.filename}
-            aria-label="Télécharger le MP3"
-            title="Télécharger le MP3"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
-              <path
-                d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </a>
         )}
+        <div className="player-row" hidden={!playing}>
+          <audio
+            ref={audioRef}
+            controls
+            onLoadedMetadata={(event) => {
+              if (playing) setDuration({ key: playing.key, seconds: event.currentTarget.duration })
+            }}
+          >
+            Votre navigateur ne peut pas lire l'audio. Téléchargez le fichier MP3.
+          </audio>
+          {playing?.kind === 'result' && (
+            <a
+              className="icon-button"
+              href={playing.url}
+              download={playing.filename}
+              aria-label="Télécharger le MP3"
+              title="Télécharger le MP3"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+                <path
+                  d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          )}
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
