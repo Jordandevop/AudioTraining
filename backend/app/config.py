@@ -40,6 +40,19 @@ class Settings:
     preview_limit_per_hour: int = field(
         default_factory=lambda: _int_env("PREVIEW_LIMIT_PER_HOUR", 120)
     )
+    # Plafonds toutes adresses confondues : bornent les abus même si une IP est falsifiée.
+    global_limit_per_hour: int = field(
+        default_factory=lambda: _int_env("GLOBAL_LIMIT_PER_HOUR", 300)
+    )
+    global_preview_limit_per_hour: int = field(
+        default_factory=lambda: _int_env("GLOBAL_PREVIEW_LIMIT_PER_HOUR", 1500)
+    )
+    max_concurrent_generations: int = field(
+        default_factory=lambda: _int_env("MAX_CONCURRENT_GENERATIONS", 3)
+    )
+    enable_api_docs: bool = field(
+        default_factory=lambda: _str_env("ENABLE_API_DOCS", "false").lower() in ("1", "true", "oui")
+    )
     tts_concurrency: int = field(default_factory=lambda: _int_env("TTS_CONCURRENCY", 4))
     generation_timeout_seconds: int = field(
         default_factory=lambda: _int_env("GENERATION_TIMEOUT_SECONDS", 240)

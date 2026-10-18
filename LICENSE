@@ -1,0 +1,10 @@
+Copyright (c) 2026 AudioTraining. Tous droits réservés.
+
+Ce logiciel et son code source sont la propriété exclusive de leur auteur.
+Aucune autorisation d'utilisation, de copie, de modification, de fusion,
+de publication, de distribution, de sous-licence ou de vente n'est accordée
+sans l'accord écrit préalable de l'auteur, y compris lorsque le dépôt est
+consultable publiquement.
+
+Les bibliothèques tierces utilisées par ce projet (FastAPI, Uvicorn,
+edge-tts, React, Vite…) restent soumises à leurs propres licences.

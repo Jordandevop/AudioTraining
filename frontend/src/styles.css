@@ -220,6 +220,15 @@ textarea[aria-invalid='true'] {
   margin: 6px 0 0;
 }
 
+/* Avertissement données de santé */
+.notice {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  font-size: 0.875rem;
+}
+
 /* Colonne des réglages */
 .side {
   display: flex;
@@ -480,6 +489,19 @@ input[type='range'] {
   font-size: 0.8125rem;
   color: var(--muted);
   text-align: center;
+}
+
+.footer p {
+  margin: 4px 0;
+}
+
+.footer a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+.footer a:hover {
+  color: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

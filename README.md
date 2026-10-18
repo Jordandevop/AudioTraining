@@ -23,6 +23,27 @@ Application web qui transforme un texte collé en **dictée audio MP3** avec une
 - Le disque est éphémère : c'est sans importance, rien n'y est écrit (tout se fait en mémoire).
 - Limites anti-abus réglables : 15 000 caractères par texte (environ 15 à 20 minutes de dictée) et 20 générations par heure et par IP.
 
+## Sécurité et cadre légal
+
+**Protections en place :**
+- Aucune clé secrète : rien à protéger dans le dépôt. `.env` est exclu de Git.
+- Les textes ne sont ni stockés ni journalisés : tout se passe en mémoire.
+- Limites par adresse IP : 20 générations et 120 extraits par heure.
+- Plafonds globaux : 300 générations et 1 500 extraits par heure, tous visiteurs confondus.
+- Au plus 3 générations complètes simultanées.
+- Requêtes de plus de 90 Ko environ refusées (413), avant lecture complète, pour protéger la mémoire du serveur gratuit.
+- En-têtes de sécurité sur toutes les réponses : politique de contenu stricte (CSP), anti-iframe, `nosniff`, HSTS, `Referrer-Policy`.
+- Documentation de l'API désactivée par défaut, entrées validées (voix en liste blanche, bornes sur la vitesse et la pause), conteneur exécuté sans droits administrateur.
+- `npm audit` et `pip-audit` : aucune vulnérabilité connue au 18 octobre 2026.
+
+**Côté légal :**
+- Pages [mentions légales](frontend/public/mentions-legales.html) et [confidentialité](frontend/public/confidentialite.html), liées dans le pied de page. L'éditeur est un particulier anonyme (LCEN, art. 6-III-2).
+- Avertissement visible sous le champ de texte : utiliser uniquement des textes fictifs ou anonymisés, jamais de données réelles de patients, car le texte part chez Microsoft.
+- Aucun cookie ni traceur, donc aucun bandeau de consentement à prévoir.
+- Code sous « tous droits réservés » (voir [LICENSE](LICENSE)). `edge-tts` est sous LGPL v3 : il est utilisé tel quel, sans modification ni redistribution.
+
+**Limite connue :** `edge-tts` utilise un service de Microsoft qui n'est pas une API officielle. Son usage personnel semble toléré, mais aucune autorisation explicite n'existe, et Microsoft peut le bloquer à tout moment.
+
 ## Lancer le projet en local
 
 Prérequis : Python 3.12 et Node.js 22 ou plus récent.
@@ -48,7 +69,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --env-file .env
 ```
 
-L'API répond sur http://localhost:8000/health et la documentation est sur http://localhost:8000/api/docs.
+L'API répond sur http://localhost:8000/health. Pour la documentation interactive (http://localhost:8000/api/docs), mettez `ENABLE_API_DOCS=true` dans `.env`. Elle est désactivée par défaut, donc en production.
 
 Pour travailler sans réseau, mettez `TTS_PROVIDER=fake` dans `.env` : l'audio produit est alors du silence.
 
@@ -166,6 +187,8 @@ Render reconstruit et remet en ligne automatiquement (`autoDeploy: true`). L'ava
 - [ ] Une génération depuis le site donne un MP3 lisible et téléchargeable.
 - [ ] Le site s'affiche correctement sur mobile.
 - [ ] Après 15 minutes d'inactivité, le site se réveille bien (bannière puis fonctionnement normal).
+- [ ] Les pages « Mentions légales » et « Confidentialité » s'ouvrent depuis le pied de page.
+- [ ] `curl -sI https://<votre-url>/` montre bien les en-têtes `content-security-policy` et `strict-transport-security`.
 
 ## Variables d'environnement
 
@@ -177,6 +200,10 @@ Voir `backend/.env.example`. Aucune n'est secrète.
 | `MAX_TEXT_CHARS` | `15000` | Taille maximale du texte |
 | `RATE_LIMIT_PER_HOUR` | `20` | Générations par heure et par IP (`0` = illimité) |
 | `PREVIEW_LIMIT_PER_HOUR` | `120` | Écoutes d'extraits par heure et par IP, quota séparé |
+| `GLOBAL_LIMIT_PER_HOUR` | `300` | Générations par heure, tous visiteurs confondus |
+| `GLOBAL_PREVIEW_LIMIT_PER_HOUR` | `1500` | Extraits par heure, tous visiteurs confondus |
+| `MAX_CONCURRENT_GENERATIONS` | `3` | Générations complètes simultanées (au-delà : « serveur occupé ») |
+| `ENABLE_API_DOCS` | `false` | Active la documentation de l'API sur `/api/docs` |
 | `TTS_CONCURRENCY` | `4` | Segments générés en parallèle |
 | `GENERATION_TIMEOUT_SECONDS` | `240` | Durée maximale d'une génération |
 | `CORS_ORIGINS` | *(vide)* | À renseigner seulement si le frontend est hébergé sur un autre domaine |

@@ -22,4 +22,5 @@ USER appuser
 
 # Render fournit le port dans $PORT. --proxy-headers : vraie IP du visiteur
 # (pour la limite de générations par heure) derrière le proxy de Render.
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"
+# --no-server-header : ne pas annoncer le logiciel serveur utilisé.
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*" --no-server-header

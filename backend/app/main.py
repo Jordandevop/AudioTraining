@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from .config import DEFAULT_VOICE, VOICES, Settings
 from .generator import generate_mp3
 from .rate_limit import RateLimiter
+from .security import SecurityMiddleware, client_ip
 from .tts import TTSError, TTSProvider, TTSTimeout, get_provider
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s : %(message)s")
@@ -37,8 +38,18 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
     provider = provider or get_provider(settings.tts_provider)
     limiter = RateLimiter(settings.rate_limit_per_hour)
     preview_limiter = RateLimiter(settings.preview_limit_per_hour)  # quota séparé
+    global_limiter = RateLimiter(settings.global_limit_per_hour)
+    global_preview_limiter = RateLimiter(settings.global_preview_limit_per_hour)
+    busy = asyncio.Semaphore(max(settings.max_concurrent_generations, 1))
 
-    app = FastAPI(title="AudioTraining", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    # Documentation interactive de l'API désactivée par défaut (moins de surface exposée).
+    docs = settings.enable_api_docs
+    app = FastAPI(
+        title="AudioTraining",
+        docs_url="/api/docs" if docs else None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json" if docs else None,
+    )
 
     if settings.cors_origins:
         app.add_middleware(
@@ -48,6 +59,9 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
             allow_headers=["Content-Type"],
             expose_headers=["Content-Disposition"],
         )
+    # Ajouté en dernier = appliqué en premier, à toutes les réponses.
+    # Un caractère pèse au plus 6 octets en JSON (\uXXXX), plus une marge pour les options.
+    app.add_middleware(SecurityMiddleware, max_body_bytes=settings.max_text_chars * 6 + 4096)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -82,8 +96,18 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
             raise HTTPException(400, "Voix inconnue. Choisissez une voix dans la liste.")
         return text
 
-    def client_ip(request: Request) -> str:
-        return request.client.host if request.client else "inconnu"
+    def check_limits(request: Request, per_ip: RateLimiter, everyone: RateLimiter, what: str) -> None:
+        if not per_ip.allow(client_ip(request)):
+            raise HTTPException(
+                429,
+                f"Limite atteinte : {per_ip.max_per_hour} {what} par heure. "
+                "Réessayez un peu plus tard.",
+            )
+        if not everyone.allow("tous"):
+            raise HTTPException(
+                429,
+                "Le service est très sollicité en ce moment. Réessayez dans une heure.",
+            )
 
     async def run_generation(
         text: str, body: GenerateRequest, max_sentences: int | None = None
@@ -122,25 +146,20 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
     @app.post("/api/audio/preview")
     async def preview(body: GenerateRequest, request: Request) -> Response:
         text = validated_text(body)
-        if not preview_limiter.allow(client_ip(request)):
-            raise HTTPException(
-                429,
-                f"Trop d'écoutes d'extraits ({settings.preview_limit_per_hour} par heure). "
-                "Réessayez un peu plus tard.",
-            )
+        check_limits(request, preview_limiter, global_preview_limiter, "écoutes d'extraits")
         audio = await run_generation(text, body, max_sentences=PREVIEW_SENTENCES)
         return Response(content=audio, media_type="audio/mpeg")
 
     @app.post("/api/audio/generate")
     async def generate(body: GenerateRequest, request: Request) -> Response:
         text = validated_text(body)
-        if not limiter.allow(client_ip(request)):
+        if busy.locked():
             raise HTTPException(
-                429,
-                f"Limite atteinte : {settings.rate_limit_per_hour} générations par heure. "
-                "Réessayez un peu plus tard.",
+                503, "Le serveur est occupé par d'autres dictées. Réessayez dans une minute."
             )
-        audio = await run_generation(text, body)
+        check_limits(request, limiter, global_limiter, "générations")
+        async with busy:
+            audio = await run_generation(text, body)
         stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y%m%d-%H%M")
         return Response(
             content=audio,

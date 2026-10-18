@@ -240,6 +240,11 @@ export default function App() {
           {tooLong && (
             <p className="stats-error">Texte trop long : raccourcissez-le ou découpez-le en plusieurs dictées.</p>
           )}
+          <p className="notice">
+            <strong>Textes fictifs ou anonymisés uniquement.</strong> Ne collez jamais de données
+            réelles de patients : le texte est envoyé au service de voix de Microsoft pour être lu,
+            puis oublié.
+          </p>
         </section>
 
         <aside className="side">
@@ -299,7 +304,15 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        Aucun texte ni fichier n'est conservé sur le serveur. Voix de synthèse Microsoft Edge.
+        <p>
+          Aucun texte ni fichier n'est conservé sur le serveur. Voix de synthèse Microsoft Edge
+          (AudioTraining n'est pas affilié à Microsoft).
+        </p>
+        <p>
+          © 2026 AudioTraining · Tous droits réservés ·{' '}
+          <a href="/mentions-legales.html">Mentions légales</a> ·{' '}
+          <a href="/confidentialite.html">Confidentialité</a>
+        </p>
       </footer>
     </div>
   )
