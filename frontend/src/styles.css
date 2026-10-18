@@ -240,6 +240,21 @@ textarea[aria-invalid='true'] {
   width: 100%;
   padding: 0;
   font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.options legend .link {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.link:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
 }
 
 .options:disabled {
@@ -386,9 +401,31 @@ input[type='range'] {
   color: var(--accent);
 }
 
-.button-secondary:hover {
+.button-secondary:hover:not(:disabled) {
   border-color: var(--accent-hover);
   color: var(--accent-hover);
+}
+
+.button-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Extrait (dans les réglages) */
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.preview .hint {
+  margin: 0;
+}
+
+.preview audio {
+  width: 100%;
 }
 
 /* Progression */

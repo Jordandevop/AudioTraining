@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchOptions, generateAudio, type ServerOptions } from './api'
+import { fetchOptions, generateAudio, previewAudio, type ServerOptions } from './api'
 import { OptionsPanel } from './components/OptionsPanel'
 import { ResultPanel } from './components/ResultPanel'
 import { countWords, estimateSeconds, formatDuration } from './estimate'
 import { SAMPLE_TEXT } from './sampleText'
+import { BASE_SETTINGS, sameSettings, toRequest, type Settings } from './settings'
 
 type ServerState = 'loading' | 'waking' | 'ready' | 'unreachable'
 
+const LIVE_PREVIEW_DELAY_MS = 500 // attendre la fin du réglage avant de régénérer
+const PREVIEW_CACHE_SIZE = 20
 const WAKE_BANNER_DELAY_MS = 3000
 const WAKE_GIVE_UP_MS = 90_000
 const WAKE_RETRY_MS = 4000
@@ -18,16 +21,22 @@ export default function App() {
   const [options, setOptions] = useState<ServerOptions | null>(null)
 
   const [text, setText] = useState('')
-  const [voice, setVoice] = useState('')
-  const [rate, setRate] = useState(-10)
-  const [readPunctuation, setReadPunctuation] = useState(true)
-  const [pauseSeconds, setPauseSeconds] = useState(2)
+  const [settings, setSettings] = useState<Settings>({ voice: '', ...BASE_SETTINGS })
 
   const [generating, setGenerating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   const [audio, setAudio] = useState<{ url: string; filename: string } | null>(null)
   const resultRef = useRef<HTMLDivElement>(null)
+
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [preview, setPreview] = useState<{ url: string; key: number } | null>(null)
+  const [hasSelection, setHasSelection] = useState(false)
+  const textRef = useRef<HTMLTextAreaElement>(null)
+  const previewTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const previewRequest = useRef(0) // pour ignorer les réponses dépassées
+  const previewCache = useRef(new Map<string, string>()) // requête → URL du MP3
 
   // Au chargement : récupérer les voix (et réveiller le serveur s'il dormait).
   useEffect(() => {
@@ -43,7 +52,7 @@ export default function App() {
           const data = await fetchOptions()
           if (cancelled) return
           setOptions(data)
-          setVoice(data.default)
+          setSettings((current) => ({ ...current, voice: data.default }))
           setServer('ready')
           return
         } catch {
@@ -73,23 +82,80 @@ export default function App() {
   const maxChars = options?.max_text_chars ?? 15000
   const tooLong = text.length > maxChars
   const words = countWords(text)
-  const estimate = estimateSeconds(text, { rate, readPunctuation, pauseSeconds })
+  const estimate = estimateSeconds(text, settings)
   const expectedGeneration = Math.max(4, estimate / 8 + 2)
   const progress = Math.min(0.95, 1 - Math.exp(-elapsed / expectedGeneration))
   const canGenerate = server === 'ready' && words > 0 && !tooLong && !generating
+  const baseSettings: Settings = { voice: options?.default ?? '', ...BASE_SETTINGS }
+
+  // Tant qu'un extrait est affiché, chaque changement de réglage le met à jour.
+  function changeSettings(patch: Partial<Settings>) {
+    const next = { ...settings, ...patch }
+    setSettings(next)
+    if (preview) {
+      clearTimeout(previewTimer.current)
+      setPreviewLoading(true)
+      previewTimer.current = setTimeout(() => playPreview(next), LIVE_PREVIEW_DELAY_MS)
+    }
+  }
+
+  // Le passage sélectionné, sinon le texte, sinon l'exemple (le serveur garde 2 phrases).
+  function previewText(): string {
+    const area = textRef.current
+    const selection = area ? text.slice(area.selectionStart, area.selectionEnd).trim() : ''
+    return selection || text.trim() || SAMPLE_TEXT
+  }
+
+  function showPreview(url: string) {
+    setPreview((current) => ({ url, key: (current?.key ?? 0) + 1 })) // nouvelle clé = relecture
+  }
+
+  async function playPreview(current: Settings) {
+    clearTimeout(previewTimer.current)
+    const request = toRequest(previewText(), current)
+    const cacheKey = JSON.stringify(request)
+    const id = ++previewRequest.current
+    setPreviewError('')
+
+    const cache = previewCache.current
+    const cached = cache.get(cacheKey)
+    if (cached) {
+      cache.delete(cacheKey)
+      cache.set(cacheKey, cached) // le plus récent en dernier
+      setPreviewLoading(false)
+      showPreview(cached)
+      return
+    }
+
+    setPreviewLoading(true)
+    try {
+      const url = URL.createObjectURL(await previewAudio(request))
+      cache.set(cacheKey, url)
+      if (cache.size > PREVIEW_CACHE_SIZE) {
+        const [oldestKey, oldestUrl] = cache.entries().next().value!
+        cache.delete(oldestKey)
+        URL.revokeObjectURL(oldestUrl)
+      }
+      if (id === previewRequest.current) showPreview(url)
+    } catch (err) {
+      if (id === previewRequest.current) {
+        setPreviewError(err instanceof Error ? err.message : 'Une erreur inattendue est survenue.')
+      }
+    } finally {
+      if (id === previewRequest.current) setPreviewLoading(false)
+    }
+  }
 
   async function handleGenerate() {
+    clearTimeout(previewTimer.current)
+    previewRequest.current++ // ignore un extrait encore en cours
+    setPreview(null) // arrête l'extrait
+    setPreviewLoading(false)
     setError('')
     setElapsed(0)
     setGenerating(true)
     try {
-      const result = await generateAudio({
-        text,
-        voice,
-        rate,
-        read_punctuation: readPunctuation,
-        pause_seconds: pauseSeconds,
-      })
+      const result = await generateAudio(toRequest(text, settings))
       if (audio) URL.revokeObjectURL(audio.url)
       setAudio({ url: URL.createObjectURL(result.blob), filename: result.filename })
       requestAnimationFrame(() =>
@@ -153,8 +219,12 @@ export default function App() {
           </div>
           <textarea
             id="text"
+            ref={textRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
+            onSelect={(event) =>
+              setHasSelection(event.currentTarget.selectionStart !== event.currentTarget.selectionEnd)
+            }
             placeholder="Collez ici un compte rendu, un courrier médical, une ordonnance…"
             spellCheck={false}
             aria-describedby="text-stats"
@@ -175,15 +245,17 @@ export default function App() {
         <aside className="side">
           <OptionsPanel
             voices={options?.voices ?? []}
-            voice={voice}
-            onVoiceChange={setVoice}
-            rate={rate}
-            onRateChange={setRate}
-            readPunctuation={readPunctuation}
-            onReadPunctuationChange={setReadPunctuation}
-            pauseSeconds={pauseSeconds}
-            onPauseSecondsChange={setPauseSeconds}
+            settings={settings}
+            onChange={changeSettings}
+            onReset={() => changeSettings(baseSettings)}
+            canReset={!sameSettings(settings, baseSettings)}
             disabled={generating || server !== 'ready'}
+            onPreview={() => playPreview(settings)}
+            previewLoading={previewLoading}
+            previewUrl={preview?.url ?? ''}
+            previewKey={preview?.key ?? 0}
+            previewError={previewError}
+            hasSelection={hasSelection}
           />
 
           <button

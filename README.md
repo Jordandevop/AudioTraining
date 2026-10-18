@@ -4,6 +4,7 @@ Application web qui transforme un texte collé en **dictée audio MP3** avec une
 
 - Lecture de la ponctuation comme un médecin (« virgule », « point à la ligne », « ouvrez la parenthèse »…), désactivable.
 - Vitesse réglable et pause entre les phrases (le temps de taper).
+- Écoute d'un extrait (les 2 premières phrases ou le passage sélectionné) pour ajuster les réglages avant de générer. L'extrait se met à jour tout seul à chaque changement de réglage, et un bouton « Réinitialiser » revient aux réglages de base.
 - Lecteur intégré et téléchargement du MP3.
 - Aucun compte, aucune base de données, aucun texte ni fichier conservé.
 
@@ -26,7 +27,17 @@ Application web qui transforme un texte collé en **dictée audio MP3** avec une
 
 Prérequis : Python 3.12 et Node.js 22 ou plus récent.
 
-### Backend (terminal 1)
+### En une commande
+
+```bash
+./dev.sh
+```
+
+Le script installe ce qui manque au premier lancement, démarre le serveur et le site, puis ouvre http://localhost:5173 dans le navigateur. **Ctrl+C** arrête tout.
+
+### Ou séparément
+
+#### Backend (terminal 1)
 
 ```bash
 cd backend
@@ -41,7 +52,7 @@ L'API répond sur http://localhost:8000/health et la documentation est sur http:
 
 Pour travailler sans réseau, mettez `TTS_PROVIDER=fake` dans `.env` : l'audio produit est alors du silence.
 
-### Frontend (terminal 2)
+#### Frontend (terminal 2)
 
 ```bash
 cd frontend
@@ -74,6 +85,7 @@ Puis ouvrez http://localhost:8000.
 | `GET` | `/health` | `{"status": "ok"}` |
 | `GET` | `/api/voices` | Voix disponibles, voix par défaut, taille maximale du texte |
 | `POST` | `/api/audio/generate` | Renvoie le MP3 (`audio/mpeg`, `Content-Disposition: attachment; filename="dictee-AAAAMMJJ-HHMM.mp3"`) |
+| `POST` | `/api/audio/preview` | Même corps de requête : renvoie l'extrait des 2 premières phrases (300 caractères maximum chacune), à écouter dans la page |
 
 Corps de `POST /api/audio/generate` :
 
@@ -164,6 +176,7 @@ Voir `backend/.env.example`. Aucune n'est secrète.
 | `TTS_PROVIDER` | `edge` | `edge` (voix réelles) ou `fake` (silence, pour les tests) |
 | `MAX_TEXT_CHARS` | `15000` | Taille maximale du texte |
 | `RATE_LIMIT_PER_HOUR` | `20` | Générations par heure et par IP (`0` = illimité) |
+| `PREVIEW_LIMIT_PER_HOUR` | `120` | Écoutes d'extraits par heure et par IP, quota séparé |
 | `TTS_CONCURRENCY` | `4` | Segments générés en parallèle |
 | `GENERATION_TIMEOUT_SECONDS` | `240` | Durée maximale d'une génération |
 | `CORS_ORIGINS` | *(vide)* | À renseigner seulement si le frontend est hébergé sur un autre domaine |

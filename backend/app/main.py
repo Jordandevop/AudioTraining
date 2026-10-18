@@ -21,6 +21,8 @@ from .tts import TTSError, TTSProvider, TTSTimeout, get_provider
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s : %(message)s")
 logger = logging.getLogger("audiotraining")
 
+PREVIEW_SENTENCES = 2  # deux phrases : on entend aussi la pause entre elles
+
 
 class GenerateRequest(BaseModel):
     text: str
@@ -34,6 +36,7 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
     settings = settings or Settings()
     provider = provider or get_provider(settings.tts_provider)
     limiter = RateLimiter(settings.rate_limit_per_hour)
+    preview_limiter = RateLimiter(settings.preview_limit_per_hour)  # quota séparé
 
     app = FastAPI(title="AudioTraining", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
@@ -65,8 +68,7 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
             "max_text_chars": settings.max_text_chars,
         }
 
-    @app.post("/api/audio/generate")
-    async def generate(body: GenerateRequest, request: Request) -> Response:
+    def validated_text(body: GenerateRequest) -> str:
         text = body.text.strip()
         if not text:
             raise HTTPException(400, "Le texte est vide. Collez un texte à dicter.")
@@ -78,15 +80,14 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
             )
         if body.voice not in VOICES:
             raise HTTPException(400, "Voix inconnue. Choisissez une voix dans la liste.")
+        return text
 
-        client_ip = request.client.host if request.client else "inconnu"
-        if not limiter.allow(client_ip):
-            raise HTTPException(
-                429,
-                f"Limite atteinte : {settings.rate_limit_per_hour} générations par heure. "
-                "Réessayez un peu plus tard.",
-            )
+    def client_ip(request: Request) -> str:
+        return request.client.host if request.client else "inconnu"
 
+    async def run_generation(
+        text: str, body: GenerateRequest, max_sentences: int | None = None
+    ) -> bytes:
         started = time.monotonic()
         try:
             audio = await asyncio.wait_for(
@@ -98,6 +99,7 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
                     read_punctuation=body.read_punctuation,
                     pause_seconds=body.pause_seconds,
                     concurrency=settings.tts_concurrency,
+                    max_sentences=max_sentences,
                 ),
                 settings.generation_timeout_seconds,
             )
@@ -109,12 +111,36 @@ def create_app(settings: Settings | None = None, provider: TTSProvider | None = 
             raise HTTPException(
                 502, "Le service de voix est momentanément indisponible. Réessayez dans un instant."
             )
-
         # On ne journalise jamais le texte lui-même.
         logger.info(
-            "Audio généré : %d caractères, %d octets, %.1f s",
+            "%s : %d caractères, %d octets, %.1f s",
+            "Extrait généré" if max_sentences else "Audio généré",
             len(text), len(audio), time.monotonic() - started,
         )
+        return audio
+
+    @app.post("/api/audio/preview")
+    async def preview(body: GenerateRequest, request: Request) -> Response:
+        text = validated_text(body)
+        if not preview_limiter.allow(client_ip(request)):
+            raise HTTPException(
+                429,
+                f"Trop d'écoutes d'extraits ({settings.preview_limit_per_hour} par heure). "
+                "Réessayez un peu plus tard.",
+            )
+        audio = await run_generation(text, body, max_sentences=PREVIEW_SENTENCES)
+        return Response(content=audio, media_type="audio/mpeg")
+
+    @app.post("/api/audio/generate")
+    async def generate(body: GenerateRequest, request: Request) -> Response:
+        text = validated_text(body)
+        if not limiter.allow(client_ip(request)):
+            raise HTTPException(
+                429,
+                f"Limite atteinte : {settings.rate_limit_per_hour} générations par heure. "
+                "Réessayez un peu plus tard.",
+            )
+        audio = await run_generation(text, body)
         stamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y%m%d-%H%M")
         return Response(
             content=audio,

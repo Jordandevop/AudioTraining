@@ -17,6 +17,11 @@ VOICES: dict[str, str] = {
 DEFAULT_VOICE = "fr-FR-DeniseNeural"
 
 
+def _str_env(name: str, default: str) -> str:
+    """Une variable absente ou vide (ex. `TTS_PROVIDER=`) prend la valeur par défaut."""
+    return os.environ.get(name, "").strip() or default
+
+
 def _int_env(name: str, default: int) -> int:
     value = os.environ.get(name)
     return int(value) if value else default
@@ -29,9 +34,12 @@ def _list_env(name: str) -> list[str]:
 
 @dataclass
 class Settings:
-    tts_provider: str = field(default_factory=lambda: os.environ.get("TTS_PROVIDER", "edge"))
+    tts_provider: str = field(default_factory=lambda: _str_env("TTS_PROVIDER", "edge"))
     max_text_chars: int = field(default_factory=lambda: _int_env("MAX_TEXT_CHARS", 15000))
     rate_limit_per_hour: int = field(default_factory=lambda: _int_env("RATE_LIMIT_PER_HOUR", 20))
+    preview_limit_per_hour: int = field(
+        default_factory=lambda: _int_env("PREVIEW_LIMIT_PER_HOUR", 120)
+    )
     tts_concurrency: int = field(default_factory=lambda: _int_env("TTS_CONCURRENCY", 4))
     generation_timeout_seconds: int = field(
         default_factory=lambda: _int_env("GENERATION_TIMEOUT_SECONDS", 240)
@@ -39,6 +47,6 @@ class Settings:
     cors_origins: list[str] = field(default_factory=lambda: _list_env("CORS_ORIGINS"))
     frontend_dist: Path = field(
         default_factory=lambda: Path(
-            os.environ.get("FRONTEND_DIST", BACKEND_DIR.parent / "frontend" / "dist")
+            _str_env("FRONTEND_DIST", str(BACKEND_DIR.parent / "frontend" / "dist"))
         )
     )

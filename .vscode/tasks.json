@@ -1,0 +1,16 @@
+{
+  // Cmd+Maj+B : lance le serveur et le site (voir dev.sh).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Lancer AudioTraining",
+      "type": "shell",
+      "command": "./dev.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    }
+  ]
+}
